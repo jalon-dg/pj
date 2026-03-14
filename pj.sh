@@ -1,34 +1,96 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # pj - 快速切换到 git 项目目录
-# 使用方式: source pj.sh
+# 支持: macOS (bash/zsh), Linux (bash), Windows (PowerShell)
+
+# 检测操作系统
+_pj_detect_os() {
+    case "$(uname -s)" in
+        Darwin*)  echo "macos";;
+        Linux*)   echo "linux";;
+        CYGWIN*|MINGW*|MSYS*) echo "windows";;
+        *)        echo "unknown";;
+    esac
+}
+
+# 获取用户主目录（跨平台）
+_pj_get_home() {
+    if [[ "$(uname -s)" == "CYGWIN"* ]] || [[ "$(uname -s)" == "MINGW"* ]] || [[ "$(uname -s)" == "MSYS"* ]]; then
+        cygpath -u "$USERPROFILE" 2>/dev/null || echo "$HOME"
+    else
+        echo "$HOME"
+    fi
+}
+
+# 获取默认项目目录（跨平台）
+_pj_get_default_projects_dir() {
+    local home=$(_pj_get_home)
+    case "$(_pj_detect_os)" in
+        macos|linux)
+            echo "$home/Documents/Projects"
+            ;;
+        windows)
+            echo "$home/Documents/Projects"
+            ;;
+        *)
+            echo "$home/Documents/Projects"
+            ;;
+    esac
+}
 
 # 配置目录（可自定义）
 PJ_CONFIG_DIR="${PJ_CONFIG_DIR:-$HOME/.pj-dirs}"
+# 默认项目目录
+PJ_PROJECTS_DIR="${PJ_PROJECTS_DIR:-$(_pj_get_default_projects_dir)}"
+
+# 打印带颜色的消息（跨平台）
+_pj_echo() {
+    local color="$1"
+    local message="$2"
+    local os="$(_pj_detect_os)"
+
+    if [[ "$os" == "windows" ]]; then
+        # Windows PowerShell 不支持 ANSI 颜色，使用纯文本
+        echo "$message"
+    else
+        case "$color" in
+            green)   echo -e "\033[0;32m$message\033[0m";;
+            yellow)  echo -e "\033[0;33m$message\033[0m";;
+            red)     echo -e "\033[0;31m$message\033[0m";;
+            blue)    echo -e "\033[0;34m$message\033[0m";;
+            cyan)    echo -e "\033[0;36m$message\033[0m";;
+            *)       echo "$message";;
+        esac
+    fi
+}
 
 # pj 自动添加 git clone 的项目
 _pj_auto_add() {
     local cloned_path="$1"
     if [[ -d "$cloned_path/.git" ]]; then
-        local parent_dir="$(dirname "$cloned_path")"
+        local parent_dir
+        parent_dir="$(dirname "$cloned_path")"
         # 检查是否在监控目录中
         local is_monitored=0
-        local DEFAULT_PROJECTS_DIR="$HOME/Documents/Projects"
 
         # 检查是否是默认目录的子目录
-        if [[ "$parent_dir" == "$DEFAULT_PROJECTS_DIR"/* ]]; then
+        if [[ "$parent_dir" == "$PJ_PROJECTS_DIR"/* ]]; then
             is_monitored=1
-        elif [[ -f "$PJ_CONFIG_DIR/dirs" ]] && while read -r dir; do
-            [[ "$parent_dir" == "$dir"/* ]] && break
-        done < "$PJ_CONFIG_DIR/dirs"; then
-            is_monitored=1
+        elif [[ -f "$PJ_CONFIG_DIR/dirs" ]]; then
+            while IFS= read -r dir; do
+                if [[ "$parent_dir" == "$dir"/* ]]; then
+                    is_monitored=1
+                    break
+                fi
+            done < "$PJ_CONFIG_DIR/dirs"
         fi
 
         if [[ $is_monitored -eq 0 ]]; then
             # 检查是否需要添加到监控目录
-            local parent_name="$(basename "$parent_dir")"
-            if [[ -d "$DEFAULT_PROJECTS_DIR/$parent_name" ]]; then
-                echo -e "\033[0;32m✅ 检测到新克隆项目: $(basename "$cloned_path")\033[0m"
-                echo -e "\033[0;33m   项目已自动添加到 pj 列表\033[0m"
+            local parent_name
+            parent_name="$(basename "$parent_dir")"
+            if [[ -d "$PJ_PROJECTS_DIR/$parent_name" ]]; then
+                _pj_echo green "✅ 检测到新克隆项目: $(basename "$cloned_path")"
+                _pj_echo yellow "   项目已自动添加到 pj 列表"
             fi
         fi
     fi
@@ -38,7 +100,6 @@ _pj_auto_add() {
 git() {
     local args=("$@")
     local has_clone=0
-    local clone_arg=""
 
     for arg in "$@"; do
         if [[ "$arg" == "clone" ]]; then
@@ -51,7 +112,7 @@ git() {
     local git_status=$?
 
     # 如果是 clone 命令且成功，检查是否需要处理
-    if [[ $has_clone -eq 0 ]] && [[ $git_status -eq 0 ]]; then
+    if [[ $has_clone -eq 1 ]] && [[ $git_status -eq 0 ]]; then
         for i in "${!args[@]}"; do
             if [[ "${args[$i]}" == "clone" ]]; then
                 local next_idx=$((i + 1))
@@ -90,24 +151,42 @@ _pj_get_projects() {
 }
 
 pj() {
+    local os="$(_pj_detect_os)"
+
+    # 检查 git 是否安装
+    if ! command -v git &> /dev/null; then
+        _pj_echo red "❌ pj 依赖 git，请先安装 git"
+        if [[ "$os" == "macos" ]]; then
+            echo "   macOS: brew install git"
+        elif [[ "$os" == "linux" ]]; then
+            echo "   Ubuntu/Debian: sudo apt install git"
+            echo "   CentOS/RHEL: sudo yum install git"
+        elif [[ "$os" == "windows" ]]; then
+            echo "   Windows: winget install Git.Git 或从 https://git-scm.com 下载"
+        fi
+        return 1
+    fi
+
     # 确保配置目录存在
     [[ ! -d "$PJ_CONFIG_DIR" ]] && mkdir -p "$PJ_CONFIG_DIR"
 
     # 缓存配置
     local CACHE_FILE="$PJ_CONFIG_DIR/cache"
-    local CACHE_TTL=300  # 缓存有效期 5 分钟
+    local CACHE_TTL=3153600000  # 缓存有效期 100 年（接近永不过期）
     local all_projects_cache=()
 
     # 读取缓存的函数
     _pj_load_cache() {
         if [[ -f "$CACHE_FILE" ]]; then
-            local now=$(date +%s)
-            local timestamp=$(head -1 "$CACHE_FILE" | cut -d: -f2)
+            local now
+            now=$(date +%s)
+            local timestamp
+            timestamp=$(head -1 "$CACHE_FILE" | cut -d: -f2)
             local age=$((now - timestamp))
 
             if [[ $age -lt $CACHE_TTL ]]; then
                 # 缓存有效，读取项目列表
-                tail -n +2 "$CACHE_FILE" | while read -r line; do
+                tail -n +2 "$CACHE_FILE" | while IFS= read -r line; do
                     [[ -n "$line" && -d "$line" ]] && all_projects_cache+=("$line")
                 done
                 return 0
@@ -118,7 +197,8 @@ pj() {
 
     # 保存缓存的函数
     _pj_save_cache() {
-        local timestamp=$(date +%s)
+        local timestamp
+        timestamp=$(date +%s)
         {
             echo "TIMESTAMP:$timestamp"
             for p in "$@"; do
@@ -129,12 +209,11 @@ pj() {
 
     # 刷新缓存的函数
     _pj_refresh_cache() {
-        local DEFAULT_PROJECTS_DIR="$HOME/Documents/Projects"
-        local dirs=("$DEFAULT_PROJECTS_DIR")
+        local dirs=("$PJ_PROJECTS_DIR")
 
         # 读取自定义目录
         if [[ -f "$PJ_CONFIG_DIR/dirs" ]]; then
-            while read -r dir; do
+            while IFS= read -r dir; do
                 [[ -n "$dir" && -d "$dir" ]] && dirs+=("$dir")
             done < "$PJ_CONFIG_DIR/dirs"
         fi
@@ -151,16 +230,15 @@ pj() {
         done
 
         _pj_save_cache "${projects[@]}"
-        echo -e "\033[0;32m✅ 缓存已刷新，共 ${#projects[@]} 个项目\033[0m"
+        _pj_echo green "✅ 缓存已刷新，共 ${#projects[@]} 个项目"
     }
 
     # 默认项目目录
-    local DEFAULT_PROJECTS_DIR="$HOME/Documents/Projects"
-    local all_dirs=("$DEFAULT_PROJECTS_DIR")
+    local all_dirs=("$PJ_PROJECTS_DIR")
 
     # 读取自定义目录
     if [[ -f "$PJ_CONFIG_DIR/dirs" ]]; then
-        while read -r dir; do
+        while IFS= read -r dir; do
             [[ -n "$dir" && -d "$dir" ]] && all_dirs+=("$dir")
         done < "$PJ_CONFIG_DIR/dirs"
     fi
@@ -180,18 +258,18 @@ pj() {
             return 1
         fi
         if [[ ! -d "$new_dir" ]]; then
-            echo -e "\033[0;31m❌ 目录不存在: ${new_dir}\033[0m"
+            _pj_echo red "❌ 目录不存在: ${new_dir}"
             return 1
         fi
         # 检查是否已存在
         if [[ -f "$PJ_CONFIG_DIR/dirs" ]] && grep -q "^${new_dir}$" "$PJ_CONFIG_DIR/dirs"; then
-            echo -e "\033[1;33m⚠️ 目录已存在: ${new_dir}\033[0m"
+            _pj_echo yellow "⚠️ 目录已存在: ${new_dir}"
             return 1
         fi
         echo "$new_dir" >> "$PJ_CONFIG_DIR/dirs"
         # 刷新缓存
         _pj_refresh_cache
-        echo -e "\033[0;32m✅ 已添加监控目录: ${new_dir}\033[0m"
+        _pj_echo green "✅ 已添加监控目录: ${new_dir}"
         return
     fi
 
@@ -206,14 +284,16 @@ pj() {
             _pj_load_cache
         fi
 
-        echo -e "\033[0;34m📁 Git 仓库列表 (缓存):\033[0m\n"
+        _pj_echo blue "📁 Git 仓库列表 (缓存):"
+        echo ""
         for p in "${all_projects_cache[@]}"; do
             project_name="$(basename "$p")"
             relative_path="${p#$HOME}"
-            echo -e "\033[0;32m▸\033[0m ${project_name}"
-            echo -e "    \033[0;33m~${relative_path}\033[0m"
+            _pj_echo green "▸ ${project_name}"
+            _pj_echo yellow "    ~${relative_path}"
         done
-        echo -e "\n\033[0;36m共 ${#all_projects_cache[@]} 个项目 | pj refresh 刷新缓存\033[0m"
+        echo ""
+        _pj_echo cyan "共 ${#all_projects_cache[@]} 个项目 | pj refresh 刷新缓存"
         return
     fi
 
@@ -247,10 +327,13 @@ pj() {
 
         # 模糊匹配（不区分大小写）
         local matches=()
-        local keyword_lower=$(echo "$keyword" | tr '[:upper:]' '[:lower:]')
+        local keyword_lower
+        keyword_lower=$(echo "$keyword" | tr '[:upper:]' '[:lower:]')
         for p in "${all_projects_cache[@]}"; do
-            local pname=$(basename "$p")
-            local pname_lower=$(echo "$pname" | tr '[:upper:]' '[:lower:]')
+            local pname
+            pname=$(basename "$p")
+            local pname_lower
+            pname_lower=$(echo "$pname" | tr '[:upper:]' '[:lower:]')
             if [[ "$pname_lower" == *"$keyword_lower"* ]]; then
                 matches+=("$p")
             fi
@@ -259,21 +342,22 @@ pj() {
         local match_count=${#matches[@]}
 
         if [[ $match_count -eq 0 ]]; then
-            echo -e "\033[0;31m❌ 未找到包含 '${keyword}' 的项目\033[0m"
+            _pj_echo red "❌ 未找到包含 '${keyword}' 的项目"
             return 1
         elif [[ $match_count -eq 1 ]]; then
             # 只有一个匹配，直接进入
             local first_match="${matches[1]}"
-            echo -e "\033[0;32m✅ 进入项目: $(basename "$first_match")\033[0m"
+            _pj_echo green "✅ 进入项目: $(basename "$first_match")"
             cd "$first_match"
         else
             # 多个匹配，让用户选择
-            echo -e "\033[1;33m找到 ${match_count} 个匹配项目，请选择:\033[0m\n"
+            _pj_echo yellow "找到 ${match_count} 个匹配项目，请选择:"
+            echo ""
             local idx=1
             for m in "${matches[@]}"; do
                 local relative_path="${m#$HOME}"
                 echo "  [$idx] $(basename "$m")"
-                echo "      \033[0;33m~${relative_path}\033[0m"
+                _pj_echo yellow "      ~${relative_path}"
                 ((idx++))
             done
             echo ""
@@ -283,10 +367,10 @@ pj() {
 
             if [[ "$choice" =~ ^[0-9]+$ ]] && [[ $choice -ge 1 ]] && [[ $choice -le $match_count ]]; then
                 local selected="${matches[$choice]}"
-                echo -e "\033[0;32m✅ 进入项目: $(basename "$selected")\033[0m"
+                _pj_echo green "✅ 进入项目: $(basename "$selected")"
                 cd "$selected"
             else
-                echo -e "\033[0;31m❌ 无效选择\033[0m"
+                _pj_echo red "❌ 无效选择"
                 return 1
             fi
         fi
@@ -326,12 +410,13 @@ pj() {
             project_dir="${matches[1]}"
             found=1
         elif [[ $match_count -gt 1 ]]; then
-            echo -e "\033[1;33m找到 ${match_count} 个匹配项目，请选择:\033[0m\n"
+            _pj_echo yellow "找到 ${match_count} 个匹配项目，请选择:"
+            echo ""
             local idx=1
             for m in "${matches[@]}"; do
                 local relative_path="${m#$HOME}"
                 echo "  [$idx] $(basename "$m")"
-                echo "      \033[0;33m~${relative_path}\033[0m"
+                _pj_echo yellow "      ~${relative_path}"
                 ((idx++))
             done
             echo ""
@@ -343,16 +428,16 @@ pj() {
                 project_dir="${matches[$choice]}"
                 found=1
             else
-                echo -e "\033[0;31m❌ 无效选择\033[0m"
+                _pj_echo red "❌ 无效选择"
                 return 1
             fi
         fi
     fi
 
     if [[ $found -eq 1 && -n "$project_dir" ]]; then
-        echo -e "\033[0;32m✅ 进入项目: $(basename "$project_dir")\033[0m"
+        _pj_echo green "✅ 进入项目: $(basename "$project_dir")"
         cd "$project_dir"
     else
-        echo -e "\033[0;31m❌ 未找到项目: ${project_name}\033[0m"
+        _pj_echo red "❌ 未找到项目: ${project_name}"
     fi
 }
