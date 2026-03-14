@@ -63,21 +63,21 @@ _pj_echo() {
     fi
 }
 
-# pj 自动添加 git clone 的项目
+# pj 自动添加 git 项目 (clone 或 init)
 _pj_auto_add() {
-    local cloned_path="$1"
-    if [[ -d "$cloned_path/.git" ]]; then
+    local new_git_path="$1"
+    if [[ -d "$new_git_path/.git" ]]; then
         local parent_dir
-        parent_dir="$(dirname "$cloned_path")"
+        parent_dir="$(dirname "$new_git_path")"
         # 检查是否在监控目录中
         local is_monitored=0
 
-        # 检查是否是默认目录的子目录
-        if [[ "$parent_dir" == "$PJ_PROJECTS_DIR"/* ]]; then
+        # 检查当前目录是否在监控目录中
+        if [[ "$new_git_path" == "$PJ_PROJECTS_DIR"/* ]]; then
             is_monitored=1
         elif [[ -f "$PJ_CONFIG_DIR/dirs" ]]; then
             while IFS= read -r dir; do
-                if [[ "$parent_dir" == "$dir"/* ]]; then
+                if [[ "$new_git_path" == "$dir"/* ]]; then
                     is_monitored=1
                     break
                 fi
@@ -85,12 +85,13 @@ _pj_auto_add() {
         fi
 
         if [[ $is_monitored -eq 0 ]]; then
-            # 检查是否需要添加到监控目录
+            # 检查父目录是否在默认项目目录下
             local parent_name
             parent_name="$(basename "$parent_dir")"
             if [[ -d "$PJ_PROJECTS_DIR/$parent_name" ]]; then
-                _pj_echo green "✅ 检测到新克隆项目: $(basename "$cloned_path")"
+                _pj_echo green "✅ 检测到新 Git 项目: $(basename "$new_git_path")"
                 _pj_echo yellow "   项目已自动添加到 pj 列表"
+                _pj_echo cyan "   请运行 pj refresh 更新缓存"
             fi
         fi
     fi
@@ -100,10 +101,14 @@ _pj_auto_add() {
 git() {
     local args=("$@")
     local has_clone=0
+    local has_init=0
 
     for arg in "$@"; do
         if [[ "$arg" == "clone" ]]; then
             has_clone=1
+        fi
+        if [[ "$arg" == "init" ]]; then
+            has_init=1
         fi
     done
 
@@ -131,6 +136,15 @@ git() {
                 break
             fi
         done
+    fi
+
+    # 如果是 init 命令且成功，自动添加当前目录到监控
+    if [[ $has_init -eq 1 ]] && [[ $git_status -eq 0 ]]; then
+        local current_dir
+        current_dir="$(pwd)"
+        if [[ -d "$current_dir/.git" ]]; then
+            _pj_auto_add "$current_dir"
+        fi
     fi
 
     return $git_status
