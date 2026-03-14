@@ -287,6 +287,23 @@ pj() {
         return
     fi
 
+    # pj watchingDirs - 查看监控目录列表
+    if [[ "$1" == "watchingDirs" || "$1" == "dirs" ]]; then
+        _pj_echo blue "📂 pj 监控的目录:"
+        echo ""
+        # 默认目录
+        _pj_echo green "▸ ${PJ_PROJECTS_DIR} (默认)"
+        # 自定义目录
+        if [[ -f "$PJ_CONFIG_DIR/dirs" ]]; then
+            while IFS= read -r dir; do
+                [[ -n "$dir" ]] && _pj_echo green "▸ ${dir}"
+            done < "$PJ_CONFIG_DIR/dirs"
+        fi
+        echo ""
+        _pj_echo cyan "共 $((${#all_dirs[@]} - 1)) 个自定义目录"
+        return
+    fi
+
     # 尝试加载缓存
     _pj_load_cache
 
@@ -316,6 +333,7 @@ pj() {
         echo "用法: pj list                # 列出所有项目"
         echo "       pj -p <关键词>         # 进入项目（模糊搜索）"
         echo "       pj adddir <路径>       # 添加监控目录"
+        echo "       pj watchingDirs       # 查看监控目录"
         echo "       pj refresh            # 强制刷新缓存"
         echo ""
         echo "监控目录:"
