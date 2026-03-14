@@ -14,11 +14,10 @@ _pj_detect_os() {
 
 # 获取用户主目录（跨平台）
 _pj_get_home() {
-    if [[ "$(uname -s)" == "CYGWIN"* ]] || [[ "$(uname -s)" == "MINGW"* ]] || [[ "$(uname -s)" == "MSYS"* ]]; then
-        cygpath -u "$USERPROFILE" 2>/dev/null || echo "$HOME"
-    else
-        echo "$HOME"
-    fi
+    case "$(uname -s)" in
+        CYGWIN*|MINGW*|MSYS*) cygpath -u "$USERPROFILE" 2>/dev/null || echo "$HOME";;
+        *) echo "$HOME";;
+    esac
 }
 
 # 获取默认项目目录（跨平台）
@@ -73,14 +72,14 @@ _pj_auto_add() {
         local is_monitored=0
 
         # 检查当前目录是否在监控目录中
-        if [[ "$new_git_path" == "$PJ_PROJECTS_DIR"/* ]]; then
-            is_monitored=1
-        elif [[ -f "$PJ_CONFIG_DIR/dirs" ]]; then
+        case "$new_git_path" in
+            "$PJ_PROJECTS_DIR"/*) is_monitored=1;;
+        esac
+        if [[ -f "$PJ_CONFIG_DIR/dirs" ]] && [[ $is_monitored -eq 0 ]]; then
             while IFS= read -r dir; do
-                if [[ "$new_git_path" == "$dir"/* ]]; then
-                    is_monitored=1
-                    break
-                fi
+                case "$new_git_path" in
+                    "$dir"/*) is_monitored=1; break;;
+                esac
             done < "$PJ_CONFIG_DIR/dirs"
         fi
 
@@ -125,9 +124,11 @@ git() {
                     # 获取克隆的目录
                     local clone_target="${args[$next_idx]}"
                     # 如果是 SSH URL 或 HTTP URL，取最后一个部分作为目录名
-                    if [[ "$clone_target" == http* ]] || [[ "$clone_target" == git@* ]]; then
-                        clone_target="$(basename "$clone_target" .git)"
-                    fi
+                    case "$clone_target" in
+                        http*|git@*)
+                            clone_target="$(basename "$clone_target" .git)"
+                            ;;
+                    esac
                     # 检查是否是有效的目录
                     if [[ -d "$clone_target" ]]; then
                         _pj_auto_add "$(pwd)/$clone_target"
@@ -366,9 +367,11 @@ pj() {
             pname=$(basename "$p")
             local pname_lower
             pname_lower=$(echo "$pname" | tr '[:upper:]' '[:lower:]')
-            if [[ "$pname_lower" == *"$keyword_lower"* ]]; then
-                matches+=("$p")
-            fi
+            case "$pname_lower" in
+                *"$keyword_lower"*)
+                    matches+=("$p")
+                    ;;
+            esac
         done
 
         local match_count=${#matches[@]}
