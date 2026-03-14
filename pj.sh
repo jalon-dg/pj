@@ -200,9 +200,9 @@ pj() {
 
             if [[ $age -lt $CACHE_TTL ]]; then
                 # 缓存有效，读取项目列表
-                tail -n +2 "$CACHE_FILE" | while IFS= read -r line; do
+                while IFS= read -r line; do
                     [[ -n "$line" && -d "$line" ]] && all_projects_cache+=("$line")
-                done
+                done < <(tail -n +2 "$CACHE_FILE")
                 return 0
             fi
         fi
