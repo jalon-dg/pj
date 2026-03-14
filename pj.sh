@@ -42,12 +42,19 @@ PJ_CONFIG_DIR="${PJ_CONFIG_DIR:-$HOME/.pj-dirs}"
 PJ_PROJECTS_DIR="${PJ_PROJECTS_DIR:-$(_pj_get_default_projects_dir)}"
 
 # 打印带颜色的消息（跨平台）
+# 缓存 OS 检测结果，避免重复调用 uname
+_PJ_DETECTED_OS=""
+
 _pj_echo() {
     local color="$1"
     local message="$2"
-    local os="$(_pj_detect_os)"
 
-    if [[ "$os" == "windows" ]]; then
+    # 延迟检测 OS，只在第一次调用时检测
+    if [[ -z "$_PJ_DETECTED_OS" ]]; then
+        _PJ_DETECTED_OS=$(_pj_detect_os)
+    fi
+
+    if [[ "$_PJ_DETECTED_OS" == "windows" ]]; then
         # Windows PowerShell 不支持 ANSI 颜色，使用纯文本
         echo "$message"
     else
