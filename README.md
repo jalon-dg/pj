@@ -18,13 +18,31 @@
 - 支持添加自定义监控目录
 - 自动追踪 git clone 创建的新项目（仅 bash/zsh）
 
-## 安装
+## 安装方式
 
-### macOS / Linux (bash)
+### 一键安装（推荐）
 
 ```bash
+# macOS / Linux
+curl -sL https://raw.githubusercontent.com/jalon-dg/pj/main/install.sh | bash
+```
+
+### Homebrew (macOS / Linux)
+
+```bash
+# 添加 tap（首次）
+brew tap jalon-dg/pj
+
+# 安装
+brew install pj
+```
+
+### 手动安装
+
+**macOS / Linux (bash):**
+```bash
 # 克隆到 ~/.local/share/pj 目录
-git clone https://github.com/yourusername/pj.git ~/.local/share/pj
+git clone https://github.com/jalon-dg/pj.git ~/.local/share/pj
 
 # 在 .bashrc 或 .zshrc 中添加
 echo 'source ~/.local/share/pj/pj.sh' >> ~/.bashrc
@@ -35,18 +53,16 @@ echo 'source ~/.local/share/pj/pj.sh' >> ~/.zshrc
 source ~/.bashrc
 ```
 
-### Windows (PowerShell)
-
+**Windows (PowerShell):**
 ```powershell
-# 克隆到 $HOME\Documents\PowerShell\Modules\pj 目录
-git clone https://github.com/yourusername/pj.git "$HOME\Documents\PowerShell\Modules\pj"
+# 克隆到 PowerShell 模块目录
+git clone https://github.com/jalon-dg/pj.git "$HOME\Documents\PowerShell\Modules\pj"
 
-# 在 PowerShell 配置中添加
-# 每次使用前执行:
-. "$HOME\Documents\PowerShell\Modules\pj\pj.ps1"
-
-# 或添加到 PowerShell 配置文件
+# 添加到 PowerShell 配置
 Add-Content -Path $PROFILE -Value '. "$HOME\Documents\PowerShell\Modules\pj\pj.ps1"'
+
+# 重载配置
+. $PROFILE
 ```
 
 ## 使用方法
@@ -115,3 +131,11 @@ $env:PJ_PROJECTS_DIR = "$HOME\my-projects"
 | bash 4.0+ / zsh 5.0+ / PowerShell 5.1+ | Shell 环境 |
 | git | 扫描 .git 目录 |
 | find | 查找项目目录 (bash/zsh) |
+
+## Claude Code 支持
+
+pj 已注册为 Claude Code skill。当你对 Claude Code 说"安装 pj"时，会自动执行安装。
+
+## License
+
+MIT
